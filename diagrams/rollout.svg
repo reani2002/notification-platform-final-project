@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 300">
+<rect width="100%" height="100%" fill="white"/><style>text{font-family:Arial,sans-serif;fill:#111}.t{font-size:22px;font-weight:bold}.b{font-size:14px;font-weight:bold}.n{font-size:11px}</style>
+<text class="t" x="30" y="38">Migration Rollout</text>
+<rect x="30" y="110" width="170" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="115" y="135" text-anchor="middle">0. Baseline</text><text class="n" x="115" y="153" text-anchor="middle">contracts / IDs / metrics</text>
+<rect x="235" y="110" width="170" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="320" y="135" text-anchor="middle">1. SHADOW</text><text class="n" x="320" y="153" text-anchor="middle">platform builds</text><text class="n" x="320" y="168" text-anchor="middle">legacy sends</text>
+<rect x="440" y="110" width="180" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="530" y="135" text-anchor="middle">2. CANARY</text><text class="n" x="530" y="153" text-anchor="middle">owner=PLATFORM</text><text class="n" x="530" y="168" text-anchor="middle">per product</text>
+<rect x="655" y="110" width="180" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="745" y="135" text-anchor="middle">3. SCALE OUT</text><text class="n" x="745" y="153" text-anchor="middle">25% → 50% → 100%</text>
+<rect x="870" y="110" width="190" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="965" y="135" text-anchor="middle">4. RETIRE LEGACY</text><text class="n" x="965" y="153" text-anchor="middle">after stable gates</text>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#333"/></marker></defs>
+<line x1="200" y1="150" x2="235" y2="150" stroke="#333" marker-end="url(#a)"/><line x1="405" y1="150" x2="440" y2="150" stroke="#333" marker-end="url(#a)"/><line x1="620" y1="150" x2="655" y2="150" stroke="#333" marker-end="url(#a)"/><line x1="835" y1="150" x2="870" y2="150" stroke="#333" marker-end="url(#a)"/>
+</svg>
