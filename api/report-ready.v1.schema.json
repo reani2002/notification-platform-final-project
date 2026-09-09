@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bank.example/schemas/report-ready.v1.json",
+  "title": "ReportReady",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "schemaVersion", "occurredAt", "correlationId", "clientId", "productId", "reportType", "businessDate", "reportVersion", "reportUrl", "readyAt"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "schemaVersion": {"const": "1.0"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "correlationId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "clientId": {"type": "string", "minLength": 1, "maxLength": 64},
+    "productId": {"type": "string", "minLength": 1, "maxLength": 64},
+    "reportType": {"type": "string", "minLength": 1, "maxLength": 64},
+    "businessDate": {"type": "string", "format": "date"},
+    "reportVersion": {"type": "integer", "minimum": 1},
+    "reportUrl": {"type": "string", "format": "uri"},
+    "readyAt": {"type": "string", "format": "date-time"},
+    "producer": {"type": "string", "maxLength": 100}
+  }
+}
