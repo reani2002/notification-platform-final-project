@@ -1,0 +1,180 @@
+asyncapi: 2.6.0
+info:
+  title: Unified Notification Platform Events
+  version: 1.0.0
+  description: Event contracts baseline BL-1.
+servers:
+  broker:
+    url: broker.bank.example:9093
+    protocol: kafka-secure
+    description: Logical event broker; exact technology is an architectural assumption.
+channels:
+  reports.ready.v1:
+    description: Product services publish report readiness. Delivery is at-least-once.
+    publish:
+      operationId: publishReportReady
+      message:
+        $ref: '#/components/messages/ReportReady'
+    bindings:
+      kafka:
+        partitions: 24
+        bindingVersion: 0.4.0
+  notifications.digest.published.v1:
+    description: Platform publishes initial or updated logical digest; consumers deduplicate
+      by digestId+digestVersion.
+    subscribe:
+      operationId: consumeDigestPublished
+      message:
+        $ref: '#/components/messages/DigestPublished'
+    bindings:
+      kafka:
+        partitions: 24
+        bindingVersion: 0.4.0
+components:
+  messages:
+    ReportReady:
+      name: ReportReady
+      title: Report ready
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        type: object
+        properties:
+          partitionKey:
+            type: string
+            description: clientId
+          deliveryAttempt:
+            type: integer
+      payload:
+        $schema: https://json-schema.org/draft/2020-12/schema
+        $id: https://bank.example/schemas/report-ready.v1.json
+        title: ReportReady
+        type: object
+        additionalProperties: false
+        required:
+        - eventId
+        - schemaVersion
+        - occurredAt
+        - correlationId
+        - clientId
+        - productId
+        - reportType
+        - businessDate
+        - reportVersion
+        - reportUrl
+        - readyAt
+        properties:
+          eventId:
+            type: string
+            format: uuid
+          schemaVersion:
+            const: '1.0'
+          occurredAt:
+            type: string
+            format: date-time
+          correlationId:
+            type: string
+            minLength: 1
+            maxLength: 128
+          clientId:
+            type: string
+            minLength: 1
+            maxLength: 64
+          productId:
+            type: string
+            minLength: 1
+            maxLength: 64
+          reportType:
+            type: string
+            minLength: 1
+            maxLength: 64
+          businessDate:
+            type: string
+            format: date
+          reportVersion:
+            type: integer
+            minimum: 1
+          reportUrl:
+            type: string
+            format: uri
+          readyAt:
+            type: string
+            format: date-time
+          producer:
+            type: string
+            maxLength: 100
+      x-delivery: at-least-once; ack only after readiness state is committed. Dedup
+        eventId + report key. Retry 3 attempts (5s/30s/120s), then quarantine; reconciliation
+        monitors gaps.
+    DigestPublished:
+      name: DigestPublished
+      title: Digest published/updated
+      correlationId:
+        location: $message.payload#/correlationId
+      headers:
+        type: object
+        properties:
+          partitionKey:
+            type: string
+            description: clientId
+          deliveryAttempt:
+            type: integer
+      payload:
+        $schema: https://json-schema.org/draft/2020-12/schema
+        $id: https://bank.example/schemas/digest-published.v1.json
+        title: DigestPublished
+        type: object
+        additionalProperties: false
+        required:
+        - eventId
+        - schemaVersion
+        - occurredAt
+        - correlationId
+        - clientId
+        - digestId
+        - businessDate
+        - digestVersion
+        - status
+        - reportCount
+        properties:
+          eventId:
+            type: string
+            format: uuid
+          schemaVersion:
+            const: '1.0'
+          occurredAt:
+            type: string
+            format: date-time
+          correlationId:
+            type: string
+            maxLength: 128
+          clientId:
+            type: string
+            maxLength: 64
+          digestId:
+            type: string
+            format: uuid
+          businessDate:
+            type: string
+            format: date
+          digestVersion:
+            type: integer
+            minimum: 1
+          status:
+            enum:
+            - PUBLISHED
+            - UPDATED
+            - PARTIAL
+          reportCount:
+            type: integer
+            minimum: 0
+          lateReportCount:
+            type: integer
+            minimum: 0
+      x-delivery: at-least-once; consumers dedup by digestId+digestVersion. Retry
+        3 attempts, then DLQ/quarantine.
+x-ordering: Partition by clientId; order guaranteed only inside one client partition.
+  reportVersion resolves versions for the same base report.
+x-retry-dlq: Transient failures -> exponential backoff, max 3; validation/authorization
+  errors -> quarantine immediately; operator reprocess keeps original eventId and
+  new processingAttemptId.
