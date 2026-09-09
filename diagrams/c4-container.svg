@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 500">
+<rect width="100%" height="100%" fill="white"/><style>text{font-family:Arial,sans-serif;fill:#111}.t{font-size:22px;font-weight:bold}.b{font-size:14px;font-weight:bold}.m{font-size:12px}.n{font-size:11px}</style>
+<text class="t" x="30" y="38">C4 Container — Notification Platform</text>
+<rect x="40" y="90" width="180" height="75" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="130" y="115" text-anchor="middle">Event Broker</text><text class="n" x="130" y="133" text-anchor="middle">at-least-once</text>
+<rect x="270" y="80" width="190" height="95" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="365" y="105" text-anchor="middle">Ingestor</text><text class="n" x="365" y="123" text-anchor="middle">schema validation</text><text class="n" x="365" y="138" text-anchor="middle">dedup</text><text class="n" x="365" y="153" text-anchor="middle">ACK after commit</text>
+<rect x="520" y="70" width="210" height="115" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="625" y="95" text-anchor="middle">Notification DB</text><text class="n" x="625" y="113" text-anchor="middle">readiness</text><text class="n" x="625" y="128" text-anchor="middle">digest/history</text><text class="n" x="625" y="143" text-anchor="middle">idempotency</text>
+<rect x="790" y="80" width="190" height="95" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="885" y="105" text-anchor="middle">Digest Service</text><text class="n" x="885" y="123" text-anchor="middle">09:25 publish</text><text class="n" x="885" y="138" text-anchor="middle">late → version++</text>
+<rect x="790" y="240" width="190" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="885" y="265" text-anchor="middle">Read API</text><text class="n" x="885" y="283" text-anchor="middle">/me/digests</text>
+<rect x="270" y="250" width="190" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="365" y="275" text-anchor="middle">Quarantine Worker</text><text class="n" x="365" y="293" text-anchor="middle">retry / reprocess</text>
+<rect x="520" y="250" width="210" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="625" y="275" text-anchor="middle">Reconciliation</text><text class="n" x="625" y="293" text-anchor="middle">gaps / mismatch</text>
+<rect x="520" y="390" width="210" height="80" rx="10" fill="#f7f7f7" stroke="#555"/><text class="b" x="625" y="415" text-anchor="middle">Observability</text><text class="n" x="625" y="433" text-anchor="middle">SLI/SLO / alerts</text>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#333"/></marker></defs>
+<line x1="220" y1="128" x2="270" y2="128" stroke="#333" marker-end="url(#a)"/><text class="m" x="245" y="121" text-anchor="middle">ReportReady</text>
+<line x1="460" y1="128" x2="520" y2="128" stroke="#333" marker-end="url(#a)"/><text class="m" x="490" y="121" text-anchor="middle">commit</text>
+<line x1="730" y1="128" x2="790" y2="128" stroke="#333" marker-end="url(#a)"/><text class="m" x="760" y="121" text-anchor="middle">state</text>
+<line x1="885" y1="175" x2="885" y2="240" stroke="#333" marker-end="url(#a)"/><text class="m" x="885" y="200" text-anchor="middle">publish/read</text>
+<line x1="460" y1="290" x2="520" y2="290" stroke="#333" marker-end="url(#a)"/><text class="m" x="490" y="283" text-anchor="middle">reprocess</text>
+<line x1="625" y1="250" x2="625" y2="185" stroke="#333" marker-end="url(#a)"/><text class="m" x="625" y="210" text-anchor="middle">reconcile</text>
+<line x1="625" y1="330" x2="625" y2="390" stroke="#333" marker-end="url(#a)"/><text class="m" x="625" y="353" text-anchor="middle">metrics</text>
+</svg>
