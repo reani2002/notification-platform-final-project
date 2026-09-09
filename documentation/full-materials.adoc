@@ -1,0 +1,169 @@
+= Единая платформа уведомлений по банковским продуктам
+Гладышева Ксения Владимировна
+:toc:
+
+Baseline: BL-1 / v1.0
+
+== 1. Контекст и границы
+
+*AS IS:* продуктовые сервисы формируют суточные отчёты и имеют собственные модули уведомлений; нет единого владельца delivery status, retry и истории.
+
+*Цель:* один согласованный дайджест по готовым отчётам клиента ежедневно к 09:30 МСК.
+
+*Масштаб:* до 250 000 корпоративных клиентов и до 2 000 000 `ReportReady`-событий в сутки.
+
+*Report key:* `clientId + productId + reportType + businessDate + reportVersion`.
+
+*IN:* `ReportReady` ingest, dedup/idempotency, versioned digest, history/status, retry/quarantine/reprocess, observability, audit, phased migration.
+
+*OUT:* e-mail/push, персональные расписания, новый IdP, хранение PDF внутри платформы.
+
+== 2. Допущения
+
+[cols="1,5",options="header"]
+|===
+|ID |Допущение
+|A-01 |Пиковый профиль не задан; design load target 250 `ReportReady`/с в течение 15 минут, пересматривается по production statistics.
+|A-02 |Существующий IAM/API Gateway предоставляет authenticated `clientId`.
+|A-03 |Legacy можно переключать per product; иначе нужен отдельный anti-duplication layer.
+|A-04 |`reportVersion` монотонно растёт для base report; максимальная версия активна в digest.
+|A-05 |Retention определяется политиками банка и конфигурируется.
+|A-06 |Числовые НФТ, которых нет в кейсе, являются design targets и подтверждаются review/load/security tests.
+|===
+
+== 3. Требования и трассировка
+
+[cols="1,5,2",options="header"]
+|===
+|ID |Требование |Проверка
+|BR-01 |Для `clientId+businessDate` существует один logical `digestId`. |AC-01, SLI-01
+|BR-02 |Initial publish 09:25; доступность к 09:30; late report обновляет тот же `digestId` и `digestVersion++`. |AC-03, `DigestPublished`
+|FR-01 |Основной ingest через `ReportReady v1`; `POST /report-readiness` — sync fallback. |Contract tests
+|FR-02 |Повтор `eventId/report key` не создаёт второй business effect. |AC-02, duplicate_count
+|FR-03 |Platform владеет readiness, digest, history; статусы PUBLISHED/UPDATED/PARTIAL/READ. |State tests
+|FR-04 |Клиент получает только свои digests через `/me` API. |Auth tests
+|FR-05 |ACK только после commit; retry transient errors; затем quarantine/DLQ + reprocess. |AC-04, quarantine_age
+|FR-06 |Protected URL не логируется и выдаётся только после object-level authorization. |Security tests
+|FR-07 |Reprocess и migration changes аудируются actor/time/before/after/correlationId. |AC-07
+|FR-08 |Single delivery owner per product: LEGACY/SHADOW/PLATFORM. |AC-06, double_send_count
+|FR-09 |Reconciliation выявляет gaps/stuck/mismatch и позволяет безопасный reprocess. |Ops tests
+|FR-10 |Недоступность Report Storage не блокирует metadata digest; link access даёт controlled error. |Partial failure test
+|FR-11 |При недоступности DBO digest сохраняется и после recovery читается актуальная версия. |AC-08
+|===
+
+*Impact CHG-01:* персональное расписание/таймзона изменяет BR-02, scheduler, preferences API, SLI-01 и BDD; `ReportReady v1` остаётся совместимым. Изменение не включено в BL-1.
+
+== 4. Архитектура и ownership
+
+Event-driven ingest. Product Service владеет PDF/report metadata. Notification Platform владеет readiness state, digest/history/idempotency keys. Product services не обращаются напрямую к внутренней DB платформы. PDF не копируется: хранится protected URL/metadata.
+
+*Trade-offs:*
+
+* event-driven вместо polling -> eventual consistency компенсируется dedup/retry/quarantine/reconciliation;
+* один versioned digest вместо второго late-уведомления;
+* собственная state DB вместо доступа к DB продуктов;
+* SHADOW -> CANARY вместо big bang.
+
+== 5. Интеграционные контракты
+
+[cols="3,3,5",options="header"]
+|===
+|Method/path |Назначение |Правила
+|`POST /api/v1/report-readiness` |Sync fallback readiness |S2S, Idempotency-Key, X-Correlation-ID, 202/400/401/403/409/429/503, timeout 2s.
+|`GET /api/v1/me/digests` |История клиента |OAuth2 `notifications.read`, pagination, timeout 1.5s.
+|`GET /api/v1/me/digests/{digestId}` |Детали |Object-level auth, 200/401/403/404/503.
+|`POST /api/v1/ops/digests/{digestId}/reprocess` |Ops reprocess |`notifications.ops` + audit + idempotency.
+|===
+
+*Events:* `ReportReady v1` и `DigestPublished v1`. Partition key = `clientId`. Delivery = at-least-once. Consumers dedup by `eventId + report key` или `digestId + digestVersion`. Breaking change -> v2; v1 additive-only.
+
+== 6. Сценарии обработки
+
+* Happy path: `ReportReady -> broker -> validate/dedup -> state commit -> ACK -> digest publish/update -> client GET`.
+* Duplicate: idempotent no-op; второго business effect нет.
+* DB outage: commit fail -> no ACK -> retry 5s/30s/120s -> quarantine/DLQ -> operator reprocess.
+* Late report: обновляет тот же `digestId`, `digestVersion++`.
+* Producer missing: выявляется reconciliation; consumer retry не может восстановить непубликованное событие.
+
+== 7. Нефункциональные требования
+
+[cols="2,6",options="header"]
+|===
+|Категория |Target
+|Performance |Ingest p95 <=300 ms; GET p95 <=500 ms, p99 <=1 s.
+|Availability |Read API >=99.9%/month; core processing >=99.9%.
+|Reliability |0 duplicate business effect; ACK only after commit.
+|Scalability |250k clients; 2M events/day; preliminary load 250 ev/s.
+|Recovery |RTO <=30 min; RPO=0 for broker-acked readiness.
+|Compatibility |v1 additive only; breaking -> v2; design target v1 support 6 months.
+|Security |Object-level authorization; TLS/mTLS/OAuth2.
+|Audit |100% critical ops audited.
+|Data protection |Protected URLs not logged; minimized disclosure.
+|Observability |`correlationId + eventId + report key + digestId` end-to-end.
+|Queue health |Oldest quarantine message design target <15 min.
+|Freshness |>=99.9% accepted readiness finalized <=5 min.
+|On-time digest |>=99.5% eligible digests available by 09:30.
+|===
+
+== 8. Security / STRIDE
+
+[cols="3,6",options="header"]
+|===
+|Threat |Control
+|Spoofing client/service |OAuth2/mTLS + service identity.
+|Tampering payload/link |TLS, schema validation, immutable audit.
+|Repudiation reprocess/migration |actor + before/after + correlationId audit.
+|Information disclosure |`/me`, object authorization, URL not logged.
+|DoS |rate limit, backpressure, autoscale.
+|Elevation of privilege |RBAC, least privilege, approval for ops actions.
+|===
+
+== 9. Observability / SLI-SLO / Runbook
+
+[cols="3,3,4",options="header"]
+|===
+|SLI |Target |Alert
+|On-time digest |>=99.5% by 09:30 |09:27: >0.2% not published -> P1
+|Processing freshness |>=99.9% <=5 min |oldest >5 min for 3 min -> P1
+|Read latency |p95<=500 ms; p99<=1s |p99>2s 5 min -> P1
+|Duplicate suppression |100%; business duplicates=0 |`duplicate_send_count>0` -> P1
+|Quarantine age |<15 min |>15 min or +100/min -> P1
+|===
+
+*Runbook INC-01:* detection via SLI/broker lag/quarantine -> diagnosis by partition/product/DB/scheduler/canary and correlationId -> recovery via pause canary, safe restart/scale, DB recovery, reprocess -> reconciliation readiness<->digest -> verify `duplicate_send_count=0` -> post-mortem.
+
+== 10. Acceptance / BDD
+
+[cols="1,7",options="header"]
+|===
+|ID |Проверяемый результат
+|AC-01 |Один `digestId/client/date`; eligible digest доступен к 09:30.
+|AC-02 |Повтор `ReportReady` -> без второго business effect.
+|AC-03 |Late report -> тот же `digestId`, version++.
+|AC-04 |DB outage -> no ACK -> retry -> quarantine + alert.
+|AC-05 |По correlationId/eventId/report key/digestId определяется стадия задержки/потери.
+|AC-06 |Migration switch -> `double_send_count=0`; rollback возвращает LEGACY.
+|AC-07 |Reprocess/migration operations полностью аудируются.
+|AC-08 |DBO outage не теряет digest; после recovery GET возвращает актуальную версию.
+|===
+
+== 11. Rollout и риски
+
+*0 Baseline -> 1 SHADOW -> 2 CANARY per product -> 3 SCALE OUT 25/50/100% -> 4 RETIRE LEGACY.*
+
+Gates: `duplicate_send=0`; SLI-01>=99.5%; quarantine within target; reconciliation mismatch within gate. Rollback — возврат `deliveryOwner` в LEGACY.
+
+[cols="3,6",options="header"]
+|===
+|Risk |Mitigation
+|Producer late/missing |producer contract/outbox, lateness metric, reconciliation.
+|Broker/DB backlog before 09:30 |capacity, autoscale, 09:27 P1, runbook.
+|Double-send migration |single delivery owner + shadow/canary + rollback.
+|Cross-client disclosure |`/me` auth, no URL logs, security tests.
+|Version disorder |monotonic reportVersion assumption + max version rule.
+|Peak exceeds assumption |production profiling and canary gates.
+|===
+
+== 12. Итог
+
+Решение связывает требования -> архитектуру -> API/events -> NFR/security -> SLI/SLO/runbook -> BDD/rollout. Обязательные stop-factors закрыты: architecture, integration contracts, measurable NFR, observability/operational readiness, acceptance criteria.
