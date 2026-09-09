@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bank.example/schemas/digest-published.v1.json",
+  "title": "DigestPublished",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "schemaVersion", "occurredAt", "correlationId", "clientId", "digestId", "businessDate", "digestVersion", "status", "reportCount"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "schemaVersion": {"const": "1.0"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "correlationId": {"type": "string", "maxLength": 128},
+    "clientId": {"type": "string", "maxLength": 64},
+    "digestId": {"type": "string", "format": "uuid"},
+    "businessDate": {"type": "string", "format": "date"},
+    "digestVersion": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["PUBLISHED", "UPDATED", "PARTIAL"]},
+    "reportCount": {"type": "integer", "minimum": 0},
+    "lateReportCount": {"type": "integer", "minimum": 0}
+  }
+}
