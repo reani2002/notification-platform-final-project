@@ -1,0 +1,363 @@
+openapi: 3.0.3
+info:
+  title: Unified Notification Platform API
+  version: 1.0.0
+  description: API baseline BL-1 for corporate DBO notification digests. Client identity
+    for /me is derived from access token.
+servers:
+- url: https://api.bank.example/notifications
+security:
+- oauth2:
+  - notifications.read
+paths:
+  /api/v1/report-readiness:
+    post:
+      summary: Register report readiness (sync compatibility/fallback path)
+      operationId: registerReportReadiness
+      security:
+      - oauth2:
+        - report.readiness.write
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+        description: Unique operation key; retained for 7 days.
+      - name: X-Correlation-ID
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportReadinessRequest'
+      responses:
+        '202':
+          description: Accepted or idempotently accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Same Idempotency-Key used with different payload
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Rate limited
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-timeout-ms: 2000
+      x-retry-policy: Retry 503/timeout max 3 attempts with exponential backoff and
+        jitter; do not retry 4xx except 429 respecting Retry-After.
+  /api/v1/me/digests:
+    get:
+      summary: Get digest history for authenticated client
+      operationId: getMyDigests
+      parameters:
+      - name: businessDate
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+      - name: cursor
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Digest page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DigestPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-timeout-ms: 1500
+  /api/v1/me/digests/{digestId}:
+    get:
+      summary: Get one digest owned by authenticated client
+      operationId: getMyDigest
+      parameters:
+      - name: digestId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Digest details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Digest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      x-timeout-ms: 1500
+  /api/v1/ops/digests/{digestId}/reprocess:
+    post:
+      summary: Reprocess a digest after operational incident
+      operationId: reprocessDigest
+      security:
+      - oauth2:
+        - notifications.ops
+      parameters:
+      - name: digestId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+      - name: X-Correlation-ID
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 128
+      responses:
+        '202':
+          description: Reprocessing scheduled
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Digest state does not permit reprocessing
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://iam.bank.example/oauth/token
+          scopes:
+            notifications.read: Read own digests
+            report.readiness.write: Register report readiness
+            notifications.ops: Operational reprocess
+  schemas:
+    ReportIdentity:
+      type: object
+      required:
+      - clientId
+      - productId
+      - reportType
+      - businessDate
+      - reportVersion
+      properties:
+        clientId:
+          type: string
+          maxLength: 64
+        productId:
+          type: string
+          maxLength: 64
+        reportType:
+          type: string
+          maxLength: 64
+        businessDate:
+          type: string
+          format: date
+        reportVersion:
+          type: integer
+          minimum: 1
+    ReportReadinessRequest:
+      allOf:
+      - $ref: '#/components/schemas/ReportIdentity'
+      - type: object
+        required:
+        - reportUrl
+        - readyAt
+        - eventId
+        properties:
+          reportUrl:
+            type: string
+            format: uri
+            description: Protected report URL. Must not be logged; returned only after
+              object-level authorization.
+          readyAt:
+            type: string
+            format: date-time
+          eventId:
+            type: string
+            format: uuid
+          producer:
+            type: string
+            maxLength: 100
+    ReadinessAccepted:
+      type: object
+      required:
+      - readinessId
+      - status
+      - duplicate
+      properties:
+        readinessId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - ACCEPTED
+          - DUPLICATE
+        duplicate:
+          type: boolean
+    ReportItem:
+      type: object
+      required:
+      - productId
+      - reportType
+      - businessDate
+      - reportVersion
+      - readyAt
+      - reportUrl
+      properties:
+        productId:
+          type: string
+        reportType:
+          type: string
+        businessDate:
+          type: string
+          format: date
+        reportVersion:
+          type: integer
+        readyAt:
+          type: string
+          format: date-time
+        reportUrl:
+          type: string
+          format: uri
+        late:
+          type: boolean
+    Digest:
+      type: object
+      required:
+      - digestId
+      - businessDate
+      - digestVersion
+      - status
+      - publishedAt
+      - reports
+      properties:
+        digestId:
+          type: string
+          format: uuid
+        businessDate:
+          type: string
+          format: date
+        digestVersion:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+          - PUBLISHED
+          - UPDATED
+          - PARTIAL
+          - READ
+        publishedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        unread:
+          type: boolean
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportItem'
+    DigestPage:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Digest'
+        nextCursor:
+          type: string
+    Problem:
+      type: object
+      required:
+      - type
+      - title
+      - status
+      - correlationId
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Authentication required
+    Forbidden:
+      description: Insufficient scope or object ownership
+    NotFound:
+      description: Resource not found
+    Unavailable:
+      description: Temporary dependency/service failure
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+x-backward-compatibility:
+  policy: 'Within v1 only additive optional fields and non-breaking enum strategy.
+    Removing/renaming required fields or changing semantics requires /v2. Design target:
+    support v1 for 6 months after v2 introduction (A-06).'
